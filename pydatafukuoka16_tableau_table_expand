@@ -1,0 +1,45 @@
+import pandas as pd
+import lightgbm
+import shap
+from sklearn.preprocessing import LabelEncoder
+
+df = pd.DataFrame(_arg1)
+
+fname = ['Culmen Length (mm)',
+         'Culmen Depth (mm)',
+         'Flipper Length (mm)',
+         'Body Mass (g)', 
+         'Delta 15 N (o/oo)', 
+         'Delta 13 C (o/oo)']
+
+for c in fname:
+    df[c].fillna(df[c].median())
+    
+df.loc[df['Sex']=='MALE', 'is_male'] = 1
+df.loc[df['Sex']=='FEMALE', 'is_female'] = 1
+
+fname = fname+['is_male', 'is_female']
+
+le = LabelEncoder()
+df['int_Species'] = le.fit_transform(df['Species'])
+
+X = df[fname]
+y = df['int_Species']
+
+
+lgb = lightgbm.LGBMClassifier()
+lgb.fit(X,y)
+
+shap_values = shap.TreeExplainer(lgb).shap_values(X)
+
+res = []
+for i, r in df[['Species', 'int_Species']].drop_duplicates().iterrows():
+    y = r['Species']
+    tmp_col_name = [f'SHAP_y_{y}_f_{c}' for c in X.columns.tolist()]
+    tmp = pd.DataFrame(shap_values[r['int_Species']])
+    tmp.columns = tmp_col_name
+    res.append(tmp)
+shap_df = pd.concat(res, axis=1).reset_index()
+shap_df['pred'] = lgb.predict(X)
+
+return shap_df.to_dict(orient='list')
